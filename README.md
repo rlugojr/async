@@ -36,9 +36,9 @@ async.map(['file1','file2','file3'], fs.stat, function(err, results){
 
 async.filter(['file1','file2','file3'], function(filePath, callback) {
   fs.access(filePath, function(err) {
-    callback(null, !err)
+    callback(!err)
   });
-}, function(err, results){
+}, function(results){
     // results now equals an array of the existing files
 });
 
@@ -221,6 +221,7 @@ Some functions are also available in the following forms:
 * [`retry`](#retry)
 * [`iterator`](#iterator)
 * [`times`](#times), `timesSeries`, `timesLimit`
+* [`race`](#race)
 
 ### Utils
 
@@ -416,9 +417,9 @@ __Example__
 ```js
 async.filter(['file1','file2','file3'], function(filePath, callback) {
   fs.access(filePath, function(err) {
-    callback(null, !err)
+    callback(!err)
   });
-}, function(err, results){
+}, function(results){
     // results now equals an array of the existing files
 });
 ```
@@ -1652,6 +1653,46 @@ __Related__
 
 * timesSeries(n, iteratee, [callback])
 * timesLimit(n, limit, iteratee, [callback])
+
+---------------------------------------
+
+<a name="race" />
+### race(tasks, [callback])
+
+Runs the `tasks` array of functions in parallel, without waiting until the
+previous function has completed. Once any the `tasks` completed or pass an
+error to its callback, the main `callback` is immediately called. It's
+equivalent to `Promise.race()`.
+
+__Arguments__
+
+* `tasks` - An array containing functions to run. Each function is passed
+  a `callback(err, result)` which it must call on completion with an error `err`
+  (which can be `null`) and an optional `result` value.
+* `callback(err, result)` - A callback to run once any of the
+  functions have completed. This function gets an error or result from the
+  first function that completed.
+
+__Example__
+
+```js
+async.race([
+    function(callback){
+        setTimeout(function(){
+            callback(null, 'one');
+        }, 200);
+    },
+    function(callback){
+        setTimeout(function(){
+            callback(null, 'two');
+        }, 100);
+    }
+],
+// main callback
+function(err, result){
+    // the result will be equal to 'two' as it finishes earlier
+});
+```
 
 ---------------------------------------
 
