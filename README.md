@@ -442,8 +442,7 @@ __Arguments__
 
 * `coll` - A collection to iterate over.
 * `iteratee(item, callback)` - A truth test to apply to each item in `coll`.
-  The `iteratee` is passed a `callback(err, truthValue)`, which must be called with a
-  boolean argument once it has completed.
+  The `iteratee` is passed a `callback(err, truthValue)` , which must be called with a boolean argument once it has completed. **Callback arguments changed in 2.0**
 * `callback(err, results)` - *Optional* A callback which is called after all the `iteratee`
   functions have finished.
 
@@ -548,9 +547,7 @@ If order within the original `coll` is important, then look at `detectSeries`.
 __Arguments__
 
 * `coll` - A collection to iterate over.
-* `iteratee(item, callback)` - A truth test to apply to each item in `coll`.
-  The iteratee is passed a `callback(err, truthValue)` which must be called with a
-  boolean argument once it has completed.
+* `iteratee(item, callback)` - A truth test to apply to each item in `coll`. The iteratee is passed a `callback(err, truthValue)` which must be called with a boolean argument once it has completed. **Callback arguments changed in 2.0**
 * `callback(err, result)` - *Optional* A callback which is called as soon as any iteratee returns
   `true`, or after all the `iteratee` functions have finished. Result will be
   the first item in the array that passes the truth test (iteratee) or the
@@ -640,8 +637,7 @@ __Arguments__
 
 * `coll` - A collection to iterate over.
 * `iteratee(item, callback)` - A truth test to apply to each item in the array
-  in parallel. The iteratee is passed a `callback(err, truthValue)` which must be
-  called with a boolean argument once it has completed.
+  in parallel. The iteratee is passed a `callback(err, truthValue)` which must be called with a boolean argument once it has completed. **Callback arguments changed in 2.0**
 * `callback(err, result)` - *Optional* A callback which is called as soon as any iteratee returns
   `true`, or after all the iteratee functions have finished. Result will be
   either `true` or `false` depending on the values of the async tests.
@@ -677,9 +673,7 @@ If any iteratee call returns `false`, the main `callback` is immediately called.
 __Arguments__
 
 * `coll` - A collection to iterate over.
-* `iteratee(item, callback)` - A truth test to apply to each item in the collection
-  in parallel. The iteratee is passed a `callback(err, truthValue)` which must be
-  called with a  boolean argument once it has completed.
+* `iteratee(item, callback)` - A truth test to apply to each item in the collection in parallel. The iteratee is passed a `callback(err, truthValue)` which must be called with a  boolean argument once it has completed. **Callback arguments changed in 2.0**
 * `callback(err, result)` - *Optional* A callback which is called after all the `iteratee`
   functions have finished. Result will be either `true` or `false` depending on
   the values of the async tests.
@@ -956,18 +950,26 @@ Like [`doWhilst`](#doWhilst), except the `test` is inverted. Note the argument o
 
 Like [`whilst`](#whilst), except the `test` is an asynchronous function that is passed a callback in the form of `function (err, truth)`. If error is passed to `test` or `fn`, the main callback is immediately called with the value of the error.
 
+Additionaly `during` passes any arguments passed by the iteratee function (2nd function) to the test function (1st function). The test callback will allways be the last parameter.
+
 __Example__
 
 ```js
 var count = 0;
 
 async.during(
-    function (callback) {
-      return callback(null, count < 5);
+    function (result, callback) {
+      if(!callback) {
+        callback = result;
+        result = null;
+      }
+      return callback(null, !result || result.counter < 5);
     },
     function (callback) {
         count++;
-        setTimeout(callback, 1000);
+        setTimeout(function() {
+          callback(null, { counter: count });
+        }, 1000);
     },
     function (err) {
         // 5 seconds have passed
@@ -1408,8 +1410,8 @@ async.auto({
 __Arguments__
 
 * `tasks` - An object. Each of its properties is either a function or an array of requirements, with the function itself the last item in the array. The object's key of a property serves as the name of the task defined by that property, i.e. can be used when specifying requirements for other tasks. The function receives one or two arguments:
-  * a `results` object, containing the results of the previously executed functions, only passed if the task has any dependencies,
-  * a `callback(err, result)` function, which must be called when finished, passing an `error` (which can be `null`) and the result of the function's execution.
+  * a `results` object, containing the results of the previously executed functions, only passed if the task has any dependencies, **Argument order changed in 2.0**
+  * a `callback(err, result)` function, which must be called when finished, passing an `error` (which can be `null`) and the result of the function's execution. **Argument order changed in 2.0**
 * `concurrency` - An optional `integer` for determining the maximum number of tasks that can be run in parallel. By default, as many as possible.
 * `callback(err, results)` - An optional callback which is called when all the tasks have been completed. It receives the `err` argument if any `tasks` pass an error to their callback. Results are always returned; however, if an error occurs, no further `tasks` will be performed, and the results object will only contain partial results.
 
@@ -1486,9 +1488,9 @@ For a complicated series of `async` tasks, using the [`auto`](#auto) function ma
 <a name="autoInject" />
 ### autoInject(tasks, [callback])
 
-A dependency-injected version of the [`auto`](#auto) function. Dependent tasks are specified as parameters to the function, after the usual callback parameter, with the parameter names matching the names of the tasks it depends on. This can provide even more readable task graphs which can be easier to maintain.
+A dependency-injected version of the [`auto`](#auto) function. Dependent tasks are specified as parameters to the function, before the usual callback parameter, with the parameter names matching the names of the tasks it depends on. This can provide even more readable task graphs which can be easier to maintain.
 
-If a final callback is specified, the task results are similarly injected, specified as named parameters after the initial error parameter.
+If a final callback is specified, the task results are still provided as a composite `results` object, exactly like auto.
 
 The autoInject function is purely syntactic sugar and its semantics are otherwise equivalent to [`auto`](#auto).
 
@@ -1497,7 +1499,7 @@ __Arguments__
 * `tasks` - An object, each of whose properties is a function of the form
   'func([dependencies...], callback). The object's key of a property serves as the name of the task defined by that property, i.e. can be used when specifying requirements for other tasks.
   * The `callback` parameter is a `callback(err, result)` which must be called when finished, passing an `error` (which can be `null`) and the result of the function's execution. The remaining parameters name other tasks on which the task is dependent, and the results from those tasks are the arguments of those parameters.
-* `callback(err, [results...])` - An optional callback which is called when all the tasks have been completed. It receives the `err` argument if any `tasks` pass an error to their callback. The remaining parameters are task names whose results you are interested in. This callback will only be called when all tasks have finished or an error has occurred, and so do not specify dependencies in the same way as `tasks` do. If an error occurs, no further `tasks` will be performed, and `results` will only be valid for those tasks which managed to complete.
+* `callback(err, results)` - An optional callback which is called when all the tasks have been completed. It receives the `err` argument if any `tasks` pass an error to their callback. Results are always returned; however, if an error occurs, no further `tasks` will be performed, and the results object will only contain partial results.
 
 
 __Example__
@@ -1525,9 +1527,9 @@ async.autoInject({
         // write_file contains the filename returned by write_file.
         callback(null, {'file':write_file, 'email':'user@example.com'});
     }
-}, function(err, email_link) {
+}, function(err, results) {
     console.log('err = ', err);
-    console.log('email_link = ', email_link);
+    console.log('email_link = ', results.email_link);
 });
 ```
 
@@ -1543,10 +1545,10 @@ async.autoInject({
         callback(null, {'file':write_file, 'email':'user@example.com'});
     }]
     //...
-}, ['email_link', function(err, email_link) {
+}, function(err, results) {
     console.log('err = ', err);
-    console.log('email_link = ', email_link);
-}]);
+    console.log('email_link = ', results.email_link);
+});
 ```
 
 This still has an advantage over plain `auto`, since the results a task depends on are still spread into arguments.
@@ -1574,7 +1576,7 @@ __Arguments__
   the function's execution, and (2) a `results` object, containing the results of
   the previously executed functions (if nested inside another control flow).
 * `callback(err, results)` - An optional callback which is called when the
-  task has succeeded, or after the final failed attempt. It receives the `err` and `result` arguments of the last attempt at completing the `task`.
+  task has succeeded, or after the final failed attempt. It receives the `err` and `result` arguments of the last attempt at completing the `task`. **Callback made optional in 2.0, use `retryable` for previous behavior.**
 
 The [`retry`](#retry) function can be used as a stand-alone control flow by passing a callback, as shown below:
 
