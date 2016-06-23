@@ -41,13 +41,15 @@ async.filter(['file1','file2','file3'], function(filePath, callback) {
 });
 
 async.parallel([
-    function(){ ... },
-    function(){ ... }
-], callback);
+    function(callback){ ... },
+    function(callback){ ... }
+], function(err, results) {
+    // optional callback
+};
 
 async.series([
-    function(){ ... },
-    function(){ ... }
+    function(callback){ ... },
+    function(callback){ ... }
 ]);
 ```
 
@@ -315,7 +317,7 @@ async.each(openFiles, function(file, callback) {
   // Perform operation on file here.
   console.log('Processing file ' + file);
 
-  if( file.length > 32 ) {
+  if (file.length > 32) {
     console.log('This file name is too long');
     callback('File name too long');
   } else {
@@ -325,7 +327,7 @@ async.each(openFiles, function(file, callback) {
   }
 }, function(err){
     // if any of the file processing produced an error, err would equal that error
-    if( err ) {
+    if (err) {
       // One of the iterations produced an error.
       // All processing will now stop.
       console.log('A file failed to process');
@@ -1814,7 +1816,7 @@ __Related__
 
 ---------------------------------------
 
-<a name="race" />
+<a name="race"></a>
 ### race(tasks, [callback])
 
 Runs the `tasks` array of functions in parallel, without waiting until the
