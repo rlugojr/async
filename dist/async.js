@@ -15,8 +15,7 @@
    * @returns {*} Returns the result of `func`.
    */
   function apply(func, thisArg, args) {
-    var length = args.length;
-    switch (length) {
+    switch (args.length) {
       case 0: return func.call(thisArg);
       case 1: return func.call(thisArg, args[0]);
       case 2: return func.call(thisArg, args[0], args[1]);
@@ -24,6 +23,87 @@
     }
     return func.apply(thisArg, args);
   }
+
+  /* Built-in method references for those with the same name as other `lodash` methods. */
+  var nativeMax = Math.max;
+
+  /**
+   * The base implementation of `_.rest` which doesn't validate or coerce arguments.
+   *
+   * @private
+   * @param {Function} func The function to apply a rest parameter to.
+   * @param {number} [start=func.length-1] The start position of the rest parameter.
+   * @returns {Function} Returns the new function.
+   */
+  function baseRest(func, start) {
+    start = nativeMax(start === undefined ? (func.length - 1) : start, 0);
+    return function() {
+      var args = arguments,
+          index = -1,
+          length = nativeMax(args.length - start, 0),
+          array = Array(length);
+
+      while (++index < length) {
+        array[index] = args[start + index];
+      }
+      index = -1;
+      var otherArgs = Array(start + 1);
+      while (++index < start) {
+        otherArgs[index] = args[index];
+      }
+      otherArgs[start] = array;
+      return apply(func, this, otherArgs);
+    };
+  }
+
+  function initialParams (fn) {
+      return baseRest(function (args /*..., callback*/) {
+          var callback = args.pop();
+          fn.call(this, args, callback);
+      });
+  }
+
+  function applyEach$1(eachfn) {
+      return baseRest(function (fns, args) {
+          var go = initialParams(function (args, callback) {
+              var that = this;
+              return eachfn(fns, function (fn, cb) {
+                  fn.apply(that, args.concat([cb]));
+              }, callback);
+          });
+          if (args.length) {
+              return go.apply(this, args);
+          } else {
+              return go;
+          }
+      });
+  }
+
+  /**
+   * The base implementation of `_.property` without support for deep paths.
+   *
+   * @private
+   * @param {string} key The key of the property to get.
+   * @returns {Function} Returns the new accessor function.
+   */
+  function baseProperty(key) {
+    return function(object) {
+      return object == null ? undefined : object[key];
+    };
+  }
+
+  /**
+   * Gets the "length" property value of `object`.
+   *
+   * **Note:** This function is used to avoid a
+   * [JIT bug](https://bugs.webkit.org/show_bug.cgi?id=142792) that affects
+   * Safari on at least iOS 8.1-8.3 ARM64.
+   *
+   * @private
+   * @param {Object} object The object to query.
+   * @returns {*} Returns the "length" value.
+   */
+  var getLength = baseProperty('length');
 
   /**
    * Checks if `value` is the
@@ -75,8 +155,7 @@
    * @since 0.1.0
    * @category Lang
    * @param {*} value The value to check.
-   * @returns {boolean} Returns `true` if `value` is correctly classified,
-   *  else `false`.
+   * @returns {boolean} Returns `true` if `value` is a function, else `false`.
    * @example
    *
    * _.isFunction(_);
@@ -92,336 +171,6 @@
     var tag = isObject(value) ? objectToString.call(value) : '';
     return tag == funcTag || tag == genTag;
   }
-
-  /**
-   * Checks if `value` is object-like. A value is object-like if it's not `null`
-   * and has a `typeof` result of "object".
-   *
-   * @static
-   * @memberOf _
-   * @since 4.0.0
-   * @category Lang
-   * @param {*} value The value to check.
-   * @returns {boolean} Returns `true` if `value` is object-like, else `false`.
-   * @example
-   *
-   * _.isObjectLike({});
-   * // => true
-   *
-   * _.isObjectLike([1, 2, 3]);
-   * // => true
-   *
-   * _.isObjectLike(_.noop);
-   * // => false
-   *
-   * _.isObjectLike(null);
-   * // => false
-   */
-  function isObjectLike(value) {
-    return !!value && typeof value == 'object';
-  }
-
-  /** `Object#toString` result references. */
-  var symbolTag = '[object Symbol]';
-
-  /** Used for built-in method references. */
-  var objectProto$1 = Object.prototype;
-
-  /**
-   * Used to resolve the
-   * [`toStringTag`](http://ecma-international.org/ecma-262/6.0/#sec-object.prototype.tostring)
-   * of values.
-   */
-  var objectToString$1 = objectProto$1.toString;
-
-  /**
-   * Checks if `value` is classified as a `Symbol` primitive or object.
-   *
-   * @static
-   * @memberOf _
-   * @since 4.0.0
-   * @category Lang
-   * @param {*} value The value to check.
-   * @returns {boolean} Returns `true` if `value` is correctly classified,
-   *  else `false`.
-   * @example
-   *
-   * _.isSymbol(Symbol.iterator);
-   * // => true
-   *
-   * _.isSymbol('abc');
-   * // => false
-   */
-  function isSymbol(value) {
-    return typeof value == 'symbol' ||
-      (isObjectLike(value) && objectToString$1.call(value) == symbolTag);
-  }
-
-  /** Used as references for various `Number` constants. */
-  var NAN = 0 / 0;
-
-  /** Used to match leading and trailing whitespace. */
-  var reTrim = /^\s+|\s+$/g;
-
-  /** Used to detect bad signed hexadecimal string values. */
-  var reIsBadHex = /^[-+]0x[0-9a-f]+$/i;
-
-  /** Used to detect binary string values. */
-  var reIsBinary = /^0b[01]+$/i;
-
-  /** Used to detect octal string values. */
-  var reIsOctal = /^0o[0-7]+$/i;
-
-  /** Built-in method references without a dependency on `root`. */
-  var freeParseInt = parseInt;
-
-  /**
-   * Converts `value` to a number.
-   *
-   * @static
-   * @memberOf _
-   * @since 4.0.0
-   * @category Lang
-   * @param {*} value The value to process.
-   * @returns {number} Returns the number.
-   * @example
-   *
-   * _.toNumber(3.2);
-   * // => 3.2
-   *
-   * _.toNumber(Number.MIN_VALUE);
-   * // => 5e-324
-   *
-   * _.toNumber(Infinity);
-   * // => Infinity
-   *
-   * _.toNumber('3.2');
-   * // => 3.2
-   */
-  function toNumber(value) {
-    if (typeof value == 'number') {
-      return value;
-    }
-    if (isSymbol(value)) {
-      return NAN;
-    }
-    if (isObject(value)) {
-      var other = isFunction(value.valueOf) ? value.valueOf() : value;
-      value = isObject(other) ? (other + '') : other;
-    }
-    if (typeof value != 'string') {
-      return value === 0 ? value : +value;
-    }
-    value = value.replace(reTrim, '');
-    var isBinary = reIsBinary.test(value);
-    return (isBinary || reIsOctal.test(value))
-      ? freeParseInt(value.slice(2), isBinary ? 2 : 8)
-      : (reIsBadHex.test(value) ? NAN : +value);
-  }
-
-  var INFINITY = 1 / 0;
-  var MAX_INTEGER = 1.7976931348623157e+308;
-  /**
-   * Converts `value` to a finite number.
-   *
-   * @static
-   * @memberOf _
-   * @since 4.12.0
-   * @category Lang
-   * @param {*} value The value to convert.
-   * @returns {number} Returns the converted number.
-   * @example
-   *
-   * _.toFinite(3.2);
-   * // => 3.2
-   *
-   * _.toFinite(Number.MIN_VALUE);
-   * // => 5e-324
-   *
-   * _.toFinite(Infinity);
-   * // => 1.7976931348623157e+308
-   *
-   * _.toFinite('3.2');
-   * // => 3.2
-   */
-  function toFinite(value) {
-    if (!value) {
-      return value === 0 ? value : 0;
-    }
-    value = toNumber(value);
-    if (value === INFINITY || value === -INFINITY) {
-      var sign = (value < 0 ? -1 : 1);
-      return sign * MAX_INTEGER;
-    }
-    return value === value ? value : 0;
-  }
-
-  /**
-   * Converts `value` to an integer.
-   *
-   * **Note:** This method is loosely based on
-   * [`ToInteger`](http://www.ecma-international.org/ecma-262/6.0/#sec-tointeger).
-   *
-   * @static
-   * @memberOf _
-   * @since 4.0.0
-   * @category Lang
-   * @param {*} value The value to convert.
-   * @returns {number} Returns the converted integer.
-   * @example
-   *
-   * _.toInteger(3.2);
-   * // => 3
-   *
-   * _.toInteger(Number.MIN_VALUE);
-   * // => 0
-   *
-   * _.toInteger(Infinity);
-   * // => 1.7976931348623157e+308
-   *
-   * _.toInteger('3.2');
-   * // => 3
-   */
-  function toInteger(value) {
-    var result = toFinite(value),
-        remainder = result % 1;
-
-    return result === result ? (remainder ? result - remainder : result) : 0;
-  }
-
-  /** Used as the `TypeError` message for "Functions" methods. */
-  var FUNC_ERROR_TEXT = 'Expected a function';
-
-  /* Built-in method references for those with the same name as other `lodash` methods. */
-  var nativeMax = Math.max;
-
-  /**
-   * Creates a function that invokes `func` with the `this` binding of the
-   * created function and arguments from `start` and beyond provided as
-   * an array.
-   *
-   * **Note:** This method is based on the
-   * [rest parameter](https://mdn.io/rest_parameters).
-   *
-   * @static
-   * @memberOf _
-   * @since 4.0.0
-   * @category Function
-   * @param {Function} func The function to apply a rest parameter to.
-   * @param {number} [start=func.length-1] The start position of the rest parameter.
-   * @returns {Function} Returns the new function.
-   * @example
-   *
-   * var say = _.rest(function(what, names) {
-   *   return what + ' ' + _.initial(names).join(', ') +
-   *     (_.size(names) > 1 ? ', & ' : '') + _.last(names);
-   * });
-   *
-   * say('hello', 'fred', 'barney', 'pebbles');
-   * // => 'hello fred, barney, & pebbles'
-   */
-  function rest(func, start) {
-    if (typeof func != 'function') {
-      throw new TypeError(FUNC_ERROR_TEXT);
-    }
-    start = nativeMax(start === undefined ? (func.length - 1) : toInteger(start), 0);
-    return function() {
-      var args = arguments,
-          index = -1,
-          length = nativeMax(args.length - start, 0),
-          array = Array(length);
-
-      while (++index < length) {
-        array[index] = args[start + index];
-      }
-      switch (start) {
-        case 0: return func.call(this, array);
-        case 1: return func.call(this, args[0], array);
-        case 2: return func.call(this, args[0], args[1], array);
-      }
-      var otherArgs = Array(start + 1);
-      index = -1;
-      while (++index < start) {
-        otherArgs[index] = args[index];
-      }
-      otherArgs[start] = array;
-      return apply(func, this, otherArgs);
-    };
-  }
-
-  function initialParams (fn) {
-      return rest(function (args /*..., callback*/) {
-          var callback = args.pop();
-          fn.call(this, args, callback);
-      });
-  }
-
-  function applyEach$1(eachfn) {
-      return rest(function (fns, args) {
-          var go = initialParams(function (args, callback) {
-              var that = this;
-              return eachfn(fns, function (fn, cb) {
-                  fn.apply(that, args.concat([cb]));
-              }, callback);
-          });
-          if (args.length) {
-              return go.apply(this, args);
-          } else {
-              return go;
-          }
-      });
-  }
-
-  /**
-   * A method that returns `undefined`.
-   *
-   * @static
-   * @memberOf _
-   * @since 2.3.0
-   * @category Util
-   * @example
-   *
-   * _.times(2, _.noop);
-   * // => [undefined, undefined]
-   */
-  function noop() {
-    // No operation performed.
-  }
-
-  function once(fn) {
-      return function () {
-          if (fn === null) return;
-          var callFn = fn;
-          fn = null;
-          callFn.apply(this, arguments);
-      };
-  }
-
-  /**
-   * The base implementation of `_.property` without support for deep paths.
-   *
-   * @private
-   * @param {string} key The key of the property to get.
-   * @returns {Function} Returns the new accessor function.
-   */
-  function baseProperty(key) {
-    return function(object) {
-      return object == null ? undefined : object[key];
-    };
-  }
-
-  /**
-   * Gets the "length" property value of `object`.
-   *
-   * **Note:** This function is used to avoid a
-   * [JIT bug](https://bugs.webkit.org/show_bug.cgi?id=142792) that affects
-   * Safari on at least iOS 8.1-8.3 ARM64.
-   *
-   * @private
-   * @param {Object} object The object to query.
-   * @returns {*} Returns the "length" value.
-   */
-  var getLength = baseProperty('length');
 
   /** Used as references for various `Number` constants. */
   var MAX_SAFE_INTEGER = 9007199254740991;
@@ -487,10 +236,49 @@
     return value != null && isLength(getLength(value)) && !isFunction(value);
   }
 
+  /**
+   * This method returns `undefined`.
+   *
+   * @static
+   * @memberOf _
+   * @since 2.3.0
+   * @category Util
+   * @example
+   *
+   * _.times(2, _.noop);
+   * // => [undefined, undefined]
+   */
+  function noop() {
+    // No operation performed.
+  }
+
+  function once(fn) {
+      return function () {
+          if (fn === null) return;
+          var callFn = fn;
+          fn = null;
+          callFn.apply(this, arguments);
+      };
+  }
+
   var iteratorSymbol = typeof Symbol === 'function' && Symbol.iterator;
 
   function getIterator (coll) {
       return iteratorSymbol && coll[iteratorSymbol] && coll[iteratorSymbol]();
+  }
+
+  /**
+   * Creates a function that invokes `func` with its first argument transformed.
+   *
+   * @private
+   * @param {Function} func The function to wrap.
+   * @param {Function} transform The argument transform.
+   * @returns {Function} Returns the new function.
+   */
+  function overArg(func, transform) {
+    return function(arg) {
+      return func(transform(arg));
+    };
   }
 
   /* Built-in method references for those with the same name as other `lodash` methods. */
@@ -503,15 +291,13 @@
    * @param {*} value The value to query.
    * @returns {null|Object} Returns the `[[Prototype]]`.
    */
-  function getPrototype(value) {
-    return nativeGetPrototype(Object(value));
-  }
+  var getPrototype = overArg(nativeGetPrototype, Object);
 
   /** Used for built-in method references. */
-  var objectProto$2 = Object.prototype;
+  var objectProto$1 = Object.prototype;
 
   /** Used to check objects for own properties. */
-  var hasOwnProperty = objectProto$2.hasOwnProperty;
+  var hasOwnProperty = objectProto$1.hasOwnProperty;
 
   /**
    * The base implementation of `_.has` without support for deep paths.
@@ -541,9 +327,7 @@
    * @param {Object} object The object to query.
    * @returns {Array} Returns the array of property names.
    */
-  function baseKeys(object) {
-    return nativeKeys(Object(object));
-  }
+  var baseKeys = overArg(nativeKeys, Object);
 
   /**
    * The base implementation of `_.times` without support for iteratee shorthands
@@ -562,6 +346,34 @@
       result[index] = iteratee(index);
     }
     return result;
+  }
+
+  /**
+   * Checks if `value` is object-like. A value is object-like if it's not `null`
+   * and has a `typeof` result of "object".
+   *
+   * @static
+   * @memberOf _
+   * @since 4.0.0
+   * @category Lang
+   * @param {*} value The value to check.
+   * @returns {boolean} Returns `true` if `value` is object-like, else `false`.
+   * @example
+   *
+   * _.isObjectLike({});
+   * // => true
+   *
+   * _.isObjectLike([1, 2, 3]);
+   * // => true
+   *
+   * _.isObjectLike(_.noop);
+   * // => false
+   *
+   * _.isObjectLike(null);
+   * // => false
+   */
+  function isObjectLike(value) {
+    return !!value && typeof value == 'object';
   }
 
   /**
@@ -597,20 +409,20 @@
   var argsTag = '[object Arguments]';
 
   /** Used for built-in method references. */
-  var objectProto$3 = Object.prototype;
+  var objectProto$2 = Object.prototype;
 
   /** Used to check objects for own properties. */
-  var hasOwnProperty$1 = objectProto$3.hasOwnProperty;
+  var hasOwnProperty$1 = objectProto$2.hasOwnProperty;
 
   /**
    * Used to resolve the
    * [`toStringTag`](http://ecma-international.org/ecma-262/6.0/#sec-object.prototype.tostring)
    * of values.
    */
-  var objectToString$2 = objectProto$3.toString;
+  var objectToString$1 = objectProto$2.toString;
 
   /** Built-in value references. */
-  var propertyIsEnumerable = objectProto$3.propertyIsEnumerable;
+  var propertyIsEnumerable = objectProto$2.propertyIsEnumerable;
 
   /**
    * Checks if `value` is likely an `arguments` object.
@@ -620,7 +432,7 @@
    * @since 0.1.0
    * @category Lang
    * @param {*} value The value to check.
-   * @returns {boolean} Returns `true` if `value` is correctly classified,
+   * @returns {boolean} Returns `true` if `value` is an `arguments` object,
    *  else `false`.
    * @example
    *
@@ -633,7 +445,7 @@
   function isArguments(value) {
     // Safari 8.1 incorrectly makes `arguments.callee` enumerable in strict mode.
     return isArrayLikeObject(value) && hasOwnProperty$1.call(value, 'callee') &&
-      (!propertyIsEnumerable.call(value, 'callee') || objectToString$2.call(value) == argsTag);
+      (!propertyIsEnumerable.call(value, 'callee') || objectToString$1.call(value) == argsTag);
   }
 
   /**
@@ -642,11 +454,9 @@
    * @static
    * @memberOf _
    * @since 0.1.0
-   * @type {Function}
    * @category Lang
    * @param {*} value The value to check.
-   * @returns {boolean} Returns `true` if `value` is correctly classified,
-   *  else `false`.
+   * @returns {boolean} Returns `true` if `value` is an array, else `false`.
    * @example
    *
    * _.isArray([1, 2, 3]);
@@ -667,14 +477,14 @@
   var stringTag = '[object String]';
 
   /** Used for built-in method references. */
-  var objectProto$4 = Object.prototype;
+  var objectProto$3 = Object.prototype;
 
   /**
    * Used to resolve the
    * [`toStringTag`](http://ecma-international.org/ecma-262/6.0/#sec-object.prototype.tostring)
    * of values.
    */
-  var objectToString$3 = objectProto$4.toString;
+  var objectToString$2 = objectProto$3.toString;
 
   /**
    * Checks if `value` is classified as a `String` primitive or object.
@@ -684,8 +494,7 @@
    * @memberOf _
    * @category Lang
    * @param {*} value The value to check.
-   * @returns {boolean} Returns `true` if `value` is correctly classified,
-   *  else `false`.
+   * @returns {boolean} Returns `true` if `value` is a string, else `false`.
    * @example
    *
    * _.isString('abc');
@@ -696,7 +505,7 @@
    */
   function isString(value) {
     return typeof value == 'string' ||
-      (!isArray(value) && isObjectLike(value) && objectToString$3.call(value) == stringTag);
+      (!isArray(value) && isObjectLike(value) && objectToString$2.call(value) == stringTag);
   }
 
   /**
@@ -738,7 +547,7 @@
   }
 
   /** Used for built-in method references. */
-  var objectProto$5 = Object.prototype;
+  var objectProto$4 = Object.prototype;
 
   /**
    * Checks if `value` is likely a prototype object.
@@ -749,7 +558,7 @@
    */
   function isPrototype(value) {
     var Ctor = value && value.constructor,
-        proto = (typeof Ctor == 'function' && Ctor.prototype) || objectProto$5;
+        proto = (typeof Ctor == 'function' && Ctor.prototype) || objectProto$4;
 
     return value === proto;
   }
@@ -802,34 +611,41 @@
     return result;
   }
 
-  function iterator(coll) {
+  function createArrayIterator(coll) {
       var i = -1;
-      var len;
-      if (isArrayLike(coll)) {
-          len = coll.length;
-          return function next() {
-              i++;
-              return i < len ? { value: coll[i], key: i } : null;
-          };
-      }
-
-      var iterate = getIterator(coll);
-      if (iterate) {
-          return function next() {
-              var item = iterate.next();
-              if (item.done) return null;
-              i++;
-              return { value: item.value, key: i };
-          };
-      }
-
-      var okeys = keys(coll);
-      len = okeys.length;
+      var len = coll.length;
       return function next() {
-          i++;
-          var key = okeys[i];
-          return i < len ? { value: coll[key], key: key } : null;
+          return ++i < len ? { value: coll[i], key: i } : null;
       };
+  }
+
+  function createES2015Iterator(iterator) {
+      var i = -1;
+      return function next() {
+          var item = iterator.next();
+          if (item.done) return null;
+          i++;
+          return { value: item.value, key: i };
+      };
+  }
+
+  function createObjectIterator(obj) {
+      var okeys = keys(obj);
+      var i = -1;
+      var len = okeys.length;
+      return function next() {
+          var key = okeys[++i];
+          return i < len ? { value: obj[key], key: key } : null;
+      };
+  }
+
+  function iterator(coll) {
+      if (isArrayLike(coll)) {
+          return createArrayIterator(coll);
+      }
+
+      var iterator = getIterator(coll);
+      return iterator ? createES2015Iterator(iterator) : createObjectIterator(coll);
   }
 
   function onlyOnce(fn) {
@@ -844,21 +660,27 @@
   function _eachOfLimit(limit) {
       return function (obj, iteratee, callback) {
           callback = once(callback || noop);
-          obj = obj || [];
-          var nextElem = iterator(obj);
-          if (limit <= 0) {
+          if (limit <= 0 || !obj) {
               return callback(null);
           }
+          var nextElem = iterator(obj);
           var done = false;
           var running = 0;
-          var errored = false;
 
-          (function replenish() {
-              if (done && running <= 0) {
+          function iterateeCallback(err) {
+              running -= 1;
+              if (err) {
+                  done = true;
+                  callback(err);
+              } else if (done && running <= 0) {
                   return callback(null);
+              } else {
+                  replenish();
               }
+          }
 
-              while (running < limit && !errored) {
+          function replenish() {
+              while (running < limit && !done) {
                   var elem = nextElem();
                   if (elem === null) {
                       done = true;
@@ -868,24 +690,121 @@
                       return;
                   }
                   running += 1;
-                  /* eslint {no-loop-func: 0} */
-                  iteratee(elem.value, elem.key, onlyOnce(function (err) {
-                      running -= 1;
-                      if (err) {
-                          callback(err);
-                          errored = true;
-                      } else {
-                          replenish();
-                      }
-                  }));
+                  iteratee(elem.value, elem.key, onlyOnce(iterateeCallback));
               }
-          })();
+          }
+
+          replenish();
       };
   }
 
-  function doParallelLimit(fn) {
-      return function (obj, limit, iteratee, callback) {
-          return fn(_eachOfLimit(limit), obj, iteratee, callback);
+  /**
+   * The same as [`eachOf`]{@link module:Collections.eachOf} but runs a maximum of `limit` async operations at a
+   * time.
+   *
+   * @name eachOfLimit
+   * @static
+   * @memberOf module:Collections
+   * @method
+   * @see [async.eachOf]{@link module:Collections.eachOf}
+   * @alias forEachOfLimit
+   * @category Collection
+   * @param {Array|Iterable|Object} coll - A collection to iterate over.
+   * @param {number} limit - The maximum number of async operations at a time.
+   * @param {Function} iteratee - A function to apply to each
+   * item in `coll`. The `key` is the item's key, or index in the case of an
+   * array. The iteratee is passed a `callback(err)` which must be called once it
+   * has completed. If no error has occurred, the callback should be run without
+   * arguments or with an explicit `null` argument. Invoked with
+   * (item, key, callback).
+   * @param {Function} [callback] - A callback which is called when all
+   * `iteratee` functions have finished, or an error occurs. Invoked with (err).
+   */
+  function eachOfLimit(coll, limit, iteratee, callback) {
+    _eachOfLimit(limit)(coll, iteratee, callback);
+  }
+
+  function doLimit(fn, limit) {
+      return function (iterable, iteratee, callback) {
+          return fn(iterable, limit, iteratee, callback);
+      };
+  }
+
+  // eachOf implementation optimized for array-likes
+  function eachOfArrayLike(coll, iteratee, callback) {
+      callback = once(callback || noop);
+      var index = 0,
+          completed = 0,
+          length = coll.length;
+      if (length === 0) {
+          callback(null);
+      }
+
+      function iteratorCallback(err) {
+          if (err) {
+              callback(err);
+          } else if (++completed === length) {
+              callback(null);
+          }
+      }
+
+      for (; index < length; index++) {
+          iteratee(coll[index], index, onlyOnce(iteratorCallback));
+      }
+  }
+
+  // a generic version of eachOf which can handle array, object, and iterator cases.
+  var eachOfGeneric = doLimit(eachOfLimit, Infinity);
+
+  /**
+   * Like [`each`]{@link module:Collections.each}, except that it passes the key (or index) as the second argument
+   * to the iteratee.
+   *
+   * @name eachOf
+   * @static
+   * @memberOf module:Collections
+   * @method
+   * @alias forEachOf
+   * @category Collection
+   * @see [async.each]{@link module:Collections.each}
+   * @param {Array|Iterable|Object} coll - A collection to iterate over.
+   * @param {Function} iteratee - A function to apply to each
+   * item in `coll`. The `key` is the item's key, or index in the case of an
+   * array. The iteratee is passed a `callback(err)` which must be called once it
+   * has completed. If no error has occurred, the callback should be run without
+   * arguments or with an explicit `null` argument. Invoked with
+   * (item, key, callback).
+   * @param {Function} [callback] - A callback which is called when all
+   * `iteratee` functions have finished, or an error occurs. Invoked with (err).
+   * @example
+   *
+   * var obj = {dev: "/dev.json", test: "/test.json", prod: "/prod.json"};
+   * var configs = {};
+   *
+   * async.forEachOf(obj, function (value, key, callback) {
+   *     fs.readFile(__dirname + value, "utf8", function (err, data) {
+   *         if (err) return callback(err);
+   *         try {
+   *             configs[key] = JSON.parse(data);
+   *         } catch (e) {
+   *             return callback(e);
+   *         }
+   *         callback();
+   *     });
+   * }, function (err) {
+   *     if (err) console.error(err.message);
+   *     // configs is now a map of JSON data
+   *     doSomethingWith(configs);
+   * });
+   */
+  function eachOf (coll, iteratee, callback) {
+      var eachOfImplementation = isArrayLike(coll) ? eachOfArrayLike : eachOfGeneric;
+      eachOfImplementation(coll, iteratee, callback);
+  }
+
+  function doParallel(fn) {
+      return function (obj, iteratee, callback) {
+          return fn(eachOf, obj, iteratee, callback);
       };
   }
 
@@ -904,33 +823,6 @@
       }, function (err) {
           callback(err, results);
       });
-  }
-
-  /**
-   * The same as [`map`]{@link module:Collections.map} but runs a maximum of `limit` async operations at a time.
-   *
-   * @name mapLimit
-   * @static
-   * @memberOf module:Collections
-   * @method
-   * @see [async.map]{@link module:Collections.map}
-   * @category Collection
-   * @param {Array|Iterable|Object} coll - A collection to iterate over.
-   * @param {number} limit - The maximum number of async operations at a time.
-   * @param {Function} iteratee - A function to apply to each item in `coll`.
-   * The iteratee is passed a `callback(err, transformed)` which must be called
-   * once it has completed with an error (which can be `null`) and a transformed
-   * item. Invoked with (item, callback).
-   * @param {Function} [callback] - A callback which is called when all `iteratee`
-   * functions have finished, or an error occurs. Results is an array of the
-   * transformed items from the `coll`. Invoked with (err, results).
-   */
-  var mapLimit = doParallelLimit(_asyncMap);
-
-  function doLimit(fn, limit) {
-      return function (iterable, iteratee, callback) {
-          return fn(iterable, limit, iteratee, callback);
-      };
   }
 
   /**
@@ -969,7 +861,7 @@
    *     // results is now an array of stats for each file
    * });
    */
-  var map = doLimit(mapLimit, Infinity);
+  var map = doParallel(_asyncMap);
 
   /**
    * Applies the provided arguments to each function in the array, calling
@@ -1003,6 +895,33 @@
    * );
    */
   var applyEach = applyEach$1(map);
+
+  function doParallelLimit(fn) {
+      return function (obj, limit, iteratee, callback) {
+          return fn(_eachOfLimit(limit), obj, iteratee, callback);
+      };
+  }
+
+  /**
+   * The same as [`map`]{@link module:Collections.map} but runs a maximum of `limit` async operations at a time.
+   *
+   * @name mapLimit
+   * @static
+   * @memberOf module:Collections
+   * @method
+   * @see [async.map]{@link module:Collections.map}
+   * @category Collection
+   * @param {Array|Iterable|Object} coll - A collection to iterate over.
+   * @param {number} limit - The maximum number of async operations at a time.
+   * @param {Function} iteratee - A function to apply to each item in `coll`.
+   * The iteratee is passed a `callback(err, transformed)` which must be called
+   * once it has completed with an error (which can be `null`) and a transformed
+   * item. Invoked with (item, callback).
+   * @param {Function} [callback] - A callback which is called when all `iteratee`
+   * functions have finished, or an error occurs. Results is an array of the
+   * transformed items from the `coll`. Invoked with (err, results).
+   */
+  var mapLimit = doParallelLimit(_asyncMap);
 
   /**
    * The same as [`map`]{@link module:Collections.map} but runs only a single async operation at a time.
@@ -1089,8 +1008,8 @@
    * two
    * three
    */
-  var apply$1 = rest(function (fn, args) {
-      return rest(function (callArgs) {
+  var apply$1 = baseRest(function (fn, args) {
+      return baseRest(function (callArgs) {
           return fn.apply(null, args.concat(callArgs));
       });
   });
@@ -1242,25 +1161,37 @@
   }
 
   /**
-   * Gets the index at which the first occurrence of `NaN` is found in `array`.
+   * The base implementation of `_.findIndex` and `_.findLastIndex` without
+   * support for iteratee shorthands.
    *
    * @private
    * @param {Array} array The array to search.
+   * @param {Function} predicate The function invoked per iteration.
    * @param {number} fromIndex The index to search from.
    * @param {boolean} [fromRight] Specify iterating from right to left.
-   * @returns {number} Returns the index of the matched `NaN`, else `-1`.
+   * @returns {number} Returns the index of the matched value, else `-1`.
    */
-  function indexOfNaN(array, fromIndex, fromRight) {
+  function baseFindIndex(array, predicate, fromIndex, fromRight) {
     var length = array.length,
         index = fromIndex + (fromRight ? 1 : -1);
 
     while ((fromRight ? index-- : ++index < length)) {
-      var other = array[index];
-      if (other !== other) {
+      if (predicate(array[index], index, array)) {
         return index;
       }
     }
     return -1;
+  }
+
+  /**
+   * The base implementation of `_.isNaN` without support for number objects.
+   *
+   * @private
+   * @param {*} value The value to check.
+   * @returns {boolean} Returns `true` if `value` is `NaN`, else `false`.
+   */
+  function baseIsNaN(value) {
+    return value !== value;
   }
 
   /**
@@ -1274,7 +1205,7 @@
    */
   function baseIndexOf(array, value, fromIndex) {
     if (value !== value) {
-      return indexOfNaN(array, fromIndex);
+      return baseFindIndex(array, baseIsNaN, fromIndex);
     }
     var index = fromIndex - 1,
         length = array.length;
@@ -1464,7 +1395,7 @@
       function runTask(key, task) {
           if (hasError) return;
 
-          var taskCallback = onlyOnce(rest(function (err, args) {
+          var taskCallback = onlyOnce(baseRest(function (err, args) {
               runningTasks--;
               if (args.length <= 1) {
                   args = args[0];
@@ -1504,7 +1435,7 @@
               currentTask = readyToCheck.pop();
               counter++;
               arrayEach(getDependents(currentTask), function (dependent) {
-                  if (! --uncheckedDependencies[dependent]) {
+                  if (--uncheckedDependencies[dependent] === 0) {
                       readyToCheck.push(dependent);
                   }
               });
@@ -1565,34 +1496,55 @@
     return array;
   }
 
-  /**
-   * Checks if `value` is a global object.
-   *
-   * @private
-   * @param {*} value The value to check.
-   * @returns {null|Object} Returns `value` if it's a global object, else `null`.
-   */
-  function checkGlobal(value) {
-    return (value && value.Object === Object) ? value : null;
-  }
-
   /** Detect free variable `global` from Node.js. */
-  var freeGlobal = checkGlobal(typeof global == 'object' && global);
+  var freeGlobal = typeof global == 'object' && global && global.Object === Object && global;
 
   /** Detect free variable `self`. */
-  var freeSelf = checkGlobal(typeof self == 'object' && self);
-
-  /** Detect `this` as the global object. */
-  var thisGlobal = checkGlobal(typeof this == 'object' && this);
+  var freeSelf = typeof self == 'object' && self && self.Object === Object && self;
 
   /** Used as a reference to the global object. */
-  var root = freeGlobal || freeSelf || thisGlobal || Function('return this')();
+  var root = freeGlobal || freeSelf || Function('return this')();
 
   /** Built-in value references. */
   var Symbol$1 = root.Symbol;
 
+  /** `Object#toString` result references. */
+  var symbolTag = '[object Symbol]';
+
+  /** Used for built-in method references. */
+  var objectProto$5 = Object.prototype;
+
+  /**
+   * Used to resolve the
+   * [`toStringTag`](http://ecma-international.org/ecma-262/6.0/#sec-object.prototype.tostring)
+   * of values.
+   */
+  var objectToString$3 = objectProto$5.toString;
+
+  /**
+   * Checks if `value` is classified as a `Symbol` primitive or object.
+   *
+   * @static
+   * @memberOf _
+   * @since 4.0.0
+   * @category Lang
+   * @param {*} value The value to check.
+   * @returns {boolean} Returns `true` if `value` is a symbol, else `false`.
+   * @example
+   *
+   * _.isSymbol(Symbol.iterator);
+   * // => true
+   *
+   * _.isSymbol('abc');
+   * // => false
+   */
+  function isSymbol(value) {
+    return typeof value == 'symbol' ||
+      (isObjectLike(value) && objectToString$3.call(value) == symbolTag);
+  }
+
   /** Used as references for various `Number` constants. */
-  var INFINITY$1 = 1 / 0;
+  var INFINITY = 1 / 0;
 
   /** Used to convert symbols to primitives and strings. */
   var symbolProto = Symbol$1 ? Symbol$1.prototype : undefined;
@@ -1614,7 +1566,7 @@
       return symbolToString ? symbolToString.call(value) : '';
     }
     var result = (value + '');
-    return (result == '0' && (1 / value) == -INFINITY$1) ? '-0' : result;
+    return (result == '0' && (1 / value) == -INFINITY) ? '-0' : result;
   }
 
   /**
@@ -1753,7 +1705,7 @@
   }
 
   /** Used to match leading and trailing whitespace. */
-  var reTrim$1 = /^\s+|\s+$/g;
+  var reTrim = /^\s+|\s+$/g;
 
   /**
    * Removes leading and trailing whitespace or specified characters from `string`.
@@ -1780,7 +1732,7 @@
   function trim(string, chars, guard) {
     string = toString(string);
     if (string && (guard || chars === undefined)) {
-      return string.replace(reTrim$1, '');
+      return string.replace(reTrim, '');
     }
     if (!string || !(chars = baseToString(chars))) {
       return string;
@@ -1935,7 +1887,7 @@
   }
 
   function wrap(defer) {
-      return rest(function (fn, args) {
+      return baseRest(function (fn, args) {
           defer(function () {
               fn.apply(null, args);
           });
@@ -2018,7 +1970,7 @@
           throw new Error('Concurrency must not be zero');
       }
 
-      function _insert(data, pos, callback) {
+      function _insert(data, insertAtFront, callback) {
           if (callback != null && typeof callback !== 'function') {
               throw new Error('task callback must be a function');
           }
@@ -2038,7 +1990,7 @@
                   callback: callback || noop
               };
 
-              if (pos) {
+              if (insertAtFront) {
                   q._tasks.unshift(item);
               } else {
                   q._tasks.push(item);
@@ -2048,7 +2000,7 @@
       }
 
       function _next(tasks) {
-          return rest(function (args) {
+          return baseRest(function (args) {
               workers -= 1;
 
               arrayEach(tasks, function (task) {
@@ -2241,32 +2193,6 @@
   }
 
   /**
-   * The same as [`eachOf`]{@link module:Collections.eachOf} but runs a maximum of `limit` async operations at a
-   * time.
-   *
-   * @name eachOfLimit
-   * @static
-   * @memberOf module:Collections
-   * @method
-   * @see [async.eachOf]{@link module:Collections.eachOf}
-   * @alias forEachOfLimit
-   * @category Collection
-   * @param {Array|Iterable|Object} coll - A collection to iterate over.
-   * @param {number} limit - The maximum number of async operations at a time.
-   * @param {Function} iteratee - A function to apply to each
-   * item in `coll`. The `key` is the item's key, or index in the case of an
-   * array. The iteratee is passed a `callback(err)` which must be called once it
-   * has completed. If no error has occurred, the callback should be run without
-   * arguments or with an explicit `null` argument. Invoked with
-   * (item, key, callback).
-   * @param {Function} [callback] - A callback which is called when all
-   * `iteratee` functions have finished, or an error occurs. Invoked with (err).
-   */
-  function eachOfLimit(coll, limit, iteratee, callback) {
-    _eachOfLimit(limit)(coll, iteratee, callback);
-  }
-
-  /**
    * The same as [`eachOf`]{@link module:Collections.eachOf} but runs only a single async operation at a time.
    *
    * @name eachOfSeries
@@ -2377,8 +2303,8 @@
    *     });
    * });
    */
-  var seq = rest(function seq(functions) {
-      return rest(function (args) {
+  var seq = baseRest(function seq(functions) {
+      return baseRest(function (args) {
           var that = this;
 
           var cb = args[args.length - 1];
@@ -2389,7 +2315,7 @@
           }
 
           reduce(functions, args, function (newargs, fn, cb) {
-              fn.apply(that, newargs.concat([rest(function (err, nextargs) {
+              fn.apply(that, newargs.concat([baseRest(function (err, nextargs) {
                   cb(err, nextargs);
               })]));
           }, function (err, results) {
@@ -2433,7 +2359,7 @@
    *     // result now equals 15
    * });
    */
-  var compose = rest(function (args) {
+  var compose = baseRest(function (args) {
     return seq.apply(null, args.reverse());
   });
 
@@ -2447,55 +2373,6 @@
       }, function (err) {
           callback(err, result);
       });
-  }
-
-  /**
-   * Like [`each`]{@link module:Collections.each}, except that it passes the key (or index) as the second argument
-   * to the iteratee.
-   *
-   * @name eachOf
-   * @static
-   * @memberOf module:Collections
-   * @method
-   * @alias forEachOf
-   * @category Collection
-   * @see [async.each]{@link module:Collections.each}
-   * @param {Array|Iterable|Object} coll - A collection to iterate over.
-   * @param {Function} iteratee - A function to apply to each
-   * item in `coll`. The `key` is the item's key, or index in the case of an
-   * array. The iteratee is passed a `callback(err)` which must be called once it
-   * has completed. If no error has occurred, the callback should be run without
-   * arguments or with an explicit `null` argument. Invoked with
-   * (item, key, callback).
-   * @param {Function} [callback] - A callback which is called when all
-   * `iteratee` functions have finished, or an error occurs. Invoked with (err).
-   * @example
-   *
-   * var obj = {dev: "/dev.json", test: "/test.json", prod: "/prod.json"};
-   * var configs = {};
-   *
-   * async.forEachOf(obj, function (value, key, callback) {
-   *     fs.readFile(__dirname + value, "utf8", function (err, data) {
-   *         if (err) return callback(err);
-   *         try {
-   *             configs[key] = JSON.parse(data);
-   *         } catch (e) {
-   *             return callback(e);
-   *         }
-   *         callback();
-   *     });
-   * }, function (err) {
-   *     if (err) console.error(err.message);
-   *     // configs is now a map of JSON data
-   *     doSomethingWith(configs);
-   * });
-   */
-  var eachOf = doLimit(eachOfLimit, Infinity);
-
-  function doParallel(fn) {
-      return function (obj, iteratee, callback) {
-          return fn(eachOf, obj, iteratee, callback);
-      };
   }
 
   /**
@@ -2596,7 +2473,7 @@
    *     //...
    * }, callback);
    */
-  var constant = rest(function (values) {
+  var constant = baseRest(function (values) {
       var args = [null].concat(values);
       return initialParams(function (ignoredArgs, callback) {
           return callback.apply(this, args);
@@ -2604,7 +2481,7 @@
   });
 
   /**
-   * This method returns the first argument given to it.
+   * This method returns the first argument it receives.
    *
    * @static
    * @since 0.1.0
@@ -2614,7 +2491,7 @@
    * @returns {*} Returns `value`.
    * @example
    *
-   * var object = { 'user': 'fred' };
+   * var object = { 'a': 1 };
    *
    * console.log(_.identity(object) === object);
    * // => true
@@ -2749,8 +2626,8 @@
   var detectSeries = _createTester(eachOfSeries, identity, _findGetResult);
 
   function consoleFunc(name) {
-      return rest(function (fn, args) {
-          fn.apply(null, args.concat([rest(function (err, args) {
+      return baseRest(function (fn, args) {
+          fn.apply(null, args.concat([baseRest(function (err, args) {
               if (typeof console === 'object') {
                   if (err) {
                       if (console.error) {
@@ -2820,7 +2697,7 @@
   function doDuring(fn, test, callback) {
       callback = onlyOnce(callback || noop);
 
-      var next = rest(function (err, args) {
+      var next = baseRest(function (err, args) {
           if (err) return callback(err);
           args.push(check);
           test.apply(this, args);
@@ -2860,7 +2737,7 @@
    */
   function doWhilst(iteratee, test, callback) {
       callback = onlyOnce(callback || noop);
-      var next = rest(function (err, args) {
+      var next = baseRest(function (err, args) {
           if (err) return callback(err);
           if (test.apply(this, args)) return iteratee(next);
           callback.apply(null, [null].concat(args));
@@ -2955,31 +2832,6 @@
   }
 
   /**
-   * The same as [`each`]{@link module:Collections.each} but runs a maximum of `limit` async operations at a time.
-   *
-   * @name eachLimit
-   * @static
-   * @memberOf module:Collections
-   * @method
-   * @see [async.each]{@link module:Collections.each}
-   * @alias forEachLimit
-   * @category Collection
-   * @param {Array|Iterable|Object} coll - A colleciton to iterate over.
-   * @param {number} limit - The maximum number of async operations at a time.
-   * @param {Function} iteratee - A function to apply to each item in `coll`. The
-   * iteratee is passed a `callback(err)` which must be called once it has
-   * completed. If no error has occurred, the `callback` should be run without
-   * arguments or with an explicit `null` argument. The array index is not passed
-   * to the iteratee. Invoked with (item, callback). If you need the index, use
-   * `eachOfLimit`.
-   * @param {Function} [callback] - A callback which is called when all
-   * `iteratee` functions have finished, or an error occurs. Invoked with (err).
-   */
-  function eachLimit(coll, limit, iteratee, callback) {
-    _eachOfLimit(limit)(coll, _withoutIndex(iteratee), callback);
-  }
-
-  /**
    * Applies the function `iteratee` to each item in `coll`, in parallel.
    * The `iteratee` is called with an item from the list, and a callback for when
    * it has finished. If the `iteratee` passes an error to its `callback`, the
@@ -3038,7 +2890,34 @@
    *     }
    * });
    */
-  var each = doLimit(eachLimit, Infinity);
+  function eachLimit(coll, iteratee, callback) {
+    eachOf(coll, _withoutIndex(iteratee), callback);
+  }
+
+  /**
+   * The same as [`each`]{@link module:Collections.each} but runs a maximum of `limit` async operations at a time.
+   *
+   * @name eachLimit
+   * @static
+   * @memberOf module:Collections
+   * @method
+   * @see [async.each]{@link module:Collections.each}
+   * @alias forEachLimit
+   * @category Collection
+   * @param {Array|Iterable|Object} coll - A colleciton to iterate over.
+   * @param {number} limit - The maximum number of async operations at a time.
+   * @param {Function} iteratee - A function to apply to each item in `coll`. The
+   * iteratee is passed a `callback(err)` which must be called once it has
+   * completed. If no error has occurred, the `callback` should be run without
+   * arguments or with an explicit `null` argument. The array index is not passed
+   * to the iteratee. Invoked with (item, callback). If you need the index, use
+   * `eachOfLimit`.
+   * @param {Function} [callback] - A callback which is called when all
+   * `iteratee` functions have finished, or an error occurs. Invoked with (err).
+   */
+  function eachLimit$1(coll, limit, iteratee, callback) {
+    _eachOfLimit(limit)(coll, _withoutIndex(iteratee), callback);
+  }
 
   /**
    * The same as [`each`]{@link module:Collections.each} but runs only a single async operation at a time.
@@ -3060,7 +2939,7 @@
    * @param {Function} [callback] - A callback which is called when all
    * `iteratee` functions have finished, or an error occurs. Invoked with (err).
    */
-  var eachSeries = doLimit(eachLimit, 1);
+  var eachSeries = doLimit(eachLimit$1, 1);
 
   /**
    * Wrap an async function and ensure it calls its callback on a later tick of
@@ -3119,28 +2998,6 @@
   }
 
   /**
-   * The same as [`every`]{@link module:Collections.every} but runs a maximum of `limit` async operations at a time.
-   *
-   * @name everyLimit
-   * @static
-   * @memberOf module:Collections
-   * @method
-   * @see [async.every]{@link module:Collections.every}
-   * @alias allLimit
-   * @category Collection
-   * @param {Array|Iterable|Object} coll - A collection to iterate over.
-   * @param {number} limit - The maximum number of async operations at a time.
-   * @param {Function} iteratee - A truth test to apply to each item in the
-   * collection in parallel. The iteratee is passed a `callback(err, truthValue)`
-   * which must be called with a  boolean argument once it has completed. Invoked
-   * with (item, callback).
-   * @param {Function} [callback] - A callback which is called after all the
-   * `iteratee` functions have finished. Result will be either `true` or `false`
-   * depending on the values of the async tests. Invoked with (err, result).
-   */
-  var everyLimit = _createTester(eachOfLimit, notId, notId);
-
-  /**
    * Returns `true` if every element in `coll` satisfies an async test. If any
    * iteratee call returns `false`, the main `callback` is immediately called.
    *
@@ -3168,7 +3025,29 @@
    *     // if result is true then every file exists
    * });
    */
-  var every = doLimit(everyLimit, Infinity);
+  var every = _createTester(eachOf, notId, notId);
+
+  /**
+   * The same as [`every`]{@link module:Collections.every} but runs a maximum of `limit` async operations at a time.
+   *
+   * @name everyLimit
+   * @static
+   * @memberOf module:Collections
+   * @method
+   * @see [async.every]{@link module:Collections.every}
+   * @alias allLimit
+   * @category Collection
+   * @param {Array|Iterable|Object} coll - A collection to iterate over.
+   * @param {number} limit - The maximum number of async operations at a time.
+   * @param {Function} iteratee - A truth test to apply to each item in the
+   * collection in parallel. The iteratee is passed a `callback(err, truthValue)`
+   * which must be called with a  boolean argument once it has completed. Invoked
+   * with (item, callback).
+   * @param {Function} [callback] - A callback which is called after all the
+   * `iteratee` functions have finished. Result will be either `true` or `false`
+   * depending on the values of the async tests. Invoked with (err, result).
+   */
+  var everyLimit = _createTester(eachOfLimit, notId, notId);
 
   /**
    * The same as [`every`]{@link module:Collections.every} but runs only a single async operation at a time.
@@ -3217,27 +3096,6 @@
   }
 
   /**
-   * The same as [`filter`]{@link module:Collections.filter} but runs a maximum of `limit` async operations at a
-   * time.
-   *
-   * @name filterLimit
-   * @static
-   * @memberOf module:Collections
-   * @method
-   * @see [async.filter]{@link module:Collections.filter}
-   * @alias selectLimit
-   * @category Collection
-   * @param {Array|Iterable|Object} coll - A collection to iterate over.
-   * @param {number} limit - The maximum number of async operations at a time.
-   * @param {Function} iteratee - A truth test to apply to each item in `coll`.
-   * The `iteratee` is passed a `callback(err, truthValue)`, which must be called
-   * with a boolean argument once it has completed. Invoked with (item, callback).
-   * @param {Function} [callback] - A callback which is called after all the
-   * `iteratee` functions have finished. Invoked with (err, results).
-   */
-  var filterLimit = doParallelLimit(_filter);
-
-  /**
    * Returns a new array of all the values in `coll` which pass an async truth
    * test. This operation is performed in parallel, but the results array will be
    * in the same order as the original.
@@ -3264,7 +3122,28 @@
    *     // results now equals an array of the existing files
    * });
    */
-  var filter = doLimit(filterLimit, Infinity);
+  var filter = doParallel(_filter);
+
+  /**
+   * The same as [`filter`]{@link module:Collections.filter} but runs a maximum of `limit` async operations at a
+   * time.
+   *
+   * @name filterLimit
+   * @static
+   * @memberOf module:Collections
+   * @method
+   * @see [async.filter]{@link module:Collections.filter}
+   * @alias selectLimit
+   * @category Collection
+   * @param {Array|Iterable|Object} coll - A collection to iterate over.
+   * @param {number} limit - The maximum number of async operations at a time.
+   * @param {Function} iteratee - A truth test to apply to each item in `coll`.
+   * The `iteratee` is passed a `callback(err, truthValue)`, which must be called
+   * with a boolean argument once it has completed. Invoked with (item, callback).
+   * @param {Function} [callback] - A callback which is called after all the
+   * `iteratee` functions have finished. Invoked with (err, results).
+   */
+  var filterLimit = doParallelLimit(_filter);
 
   /**
    * The same as [`filter`]{@link module:Collections.filter} but runs only a single async operation at a time.
@@ -3509,7 +3388,7 @@
               queues[key].push(callback);
           } else {
               queues[key] = [callback];
-              fn.apply(null, args.concat([rest(function (args) {
+              fn.apply(null, args.concat([baseRest(function (args) {
                   memo[key] = args;
                   var q = queues[key];
                   delete queues[key];
@@ -3572,7 +3451,7 @@
       var results = isArrayLike(tasks) ? [] : {};
 
       eachfn(tasks, function (task, key, callback) {
-          task(rest(function (err, args) {
+          task(baseRest(function (err, args) {
               if (args.length <= 1) {
                   args = args[0];
               }
@@ -3582,30 +3461,6 @@
       }, function (err) {
           callback(err, results);
       });
-  }
-
-  /**
-   * The same as [`parallel`]{@link module:ControlFlow.parallel} but runs a maximum of `limit` async operations at a
-   * time.
-   *
-   * @name parallelLimit
-   * @static
-   * @memberOf module:ControlFlow
-   * @method
-   * @see [async.parallel]{@link module:ControlFlow.parallel}
-   * @category Control Flow
-   * @param {Array|Collection} tasks - A collection containing functions to run.
-   * Each function is passed a `callback(err, result)` which it must call on
-   * completion with an error `err` (which can be `null`) and an optional `result`
-   * value.
-   * @param {number} limit - The maximum number of async operations at a time.
-   * @param {Function} [callback] - An optional callback to run once all the
-   * functions have completed successfully. This function gets a results array
-   * (or object) containing all the result arguments passed to the task callbacks.
-   * Invoked with (err, results).
-   */
-  function parallelLimit(tasks, limit, callback) {
-    _parallel(_eachOfLimit(limit), tasks, callback);
   }
 
   /**
@@ -3674,7 +3529,33 @@
    *     // results is now equals to: {one: 1, two: 2}
    * });
    */
-  var parallel = doLimit(parallelLimit, Infinity);
+  function parallelLimit(tasks, callback) {
+    _parallel(eachOf, tasks, callback);
+  }
+
+  /**
+   * The same as [`parallel`]{@link module:ControlFlow.parallel} but runs a maximum of `limit` async operations at a
+   * time.
+   *
+   * @name parallelLimit
+   * @static
+   * @memberOf module:ControlFlow
+   * @method
+   * @see [async.parallel]{@link module:ControlFlow.parallel}
+   * @category Control Flow
+   * @param {Array|Collection} tasks - A collection containing functions to run.
+   * Each function is passed a `callback(err, result)` which it must call on
+   * completion with an error `err` (which can be `null`) and an optional `result`
+   * value.
+   * @param {number} limit - The maximum number of async operations at a time.
+   * @param {Function} [callback] - An optional callback to run once all the
+   * functions have completed successfully. This function gets a results array
+   * (or object) containing all the result arguments passed to the task callbacks.
+   * Invoked with (err, results).
+   */
+  function parallelLimit$1(tasks, limit, callback) {
+    _parallel(_eachOfLimit(limit), tasks, callback);
+  }
 
   /**
    * A queue of tasks for the worker function to complete.
@@ -3682,8 +3563,8 @@
    * @memberOf module:ControlFlow
    * @property {Function} length - a function returning the number of items
    * waiting to be processed. Invoke with `queue.length()`.
-   * @property {Function} started - a function returning whether or not any
-   * items have been pushed and processed by the queue. Invoke with `queue.started()`.
+   * @property {boolean} started - a boolean indicating whether or not any
+   * items have been pushed and processed by the queue.
    * @property {Function} running - a function returning the number of items
    * currently being processed. Invoke with `queue.running()`.
    * @property {Function} workersList - a function returning the array of items
@@ -3971,7 +3852,7 @@
    */
   function reflect(fn) {
       return initialParams(function reflectOn(args, reflectCallback) {
-          args.push(rest(function callback(err, cbArgs) {
+          args.push(baseRest(function callback(err, cbArgs) {
               if (err) {
                   reflectCallback(null, {
                       error: err
@@ -4006,26 +3887,6 @@
   }
 
   /**
-   * The same as [`reject`]{@link module:Collections.reject} but runs a maximum of `limit` async operations at a
-   * time.
-   *
-   * @name rejectLimit
-   * @static
-   * @memberOf module:Collections
-   * @method
-   * @see [async.reject]{@link module:Collections.reject}
-   * @category Collection
-   * @param {Array|Iterable|Object} coll - A collection to iterate over.
-   * @param {number} limit - The maximum number of async operations at a time.
-   * @param {Function} iteratee - A truth test to apply to each item in `coll`.
-   * The `iteratee` is passed a `callback(err, truthValue)`, which must be called
-   * with a boolean argument once it has completed. Invoked with (item, callback).
-   * @param {Function} [callback] - A callback which is called after all the
-   * `iteratee` functions have finished. Invoked with (err, results).
-   */
-  var rejectLimit = doParallelLimit(reject$1);
-
-  /**
    * The opposite of [`filter`]{@link module:Collections.filter}. Removes values that pass an `async` truth test.
    *
    * @name reject
@@ -4051,7 +3912,7 @@
    *     createFiles(results);
    * });
    */
-  var reject = doLimit(rejectLimit, Infinity);
+  var reject = doParallel(reject$1);
 
   /**
    * A helper function that wraps an array or an object of functions with reflect.
@@ -4131,6 +3992,26 @@
       }
       return results;
   }
+
+  /**
+   * The same as [`reject`]{@link module:Collections.reject} but runs a maximum of `limit` async operations at a
+   * time.
+   *
+   * @name rejectLimit
+   * @static
+   * @memberOf module:Collections
+   * @method
+   * @see [async.reject]{@link module:Collections.reject}
+   * @category Collection
+   * @param {Array|Iterable|Object} coll - A collection to iterate over.
+   * @param {number} limit - The maximum number of async operations at a time.
+   * @param {Function} iteratee - A truth test to apply to each item in `coll`.
+   * The `iteratee` is passed a `callback(err, truthValue)`, which must be called
+   * with a boolean argument once it has completed. Invoked with (item, callback).
+   * @param {Function} [callback] - A callback which is called after all the
+   * `iteratee` functions have finished. Invoked with (err, results).
+   */
+  var rejectLimit = doParallelLimit(reject$1);
 
   /**
    * The same as [`reject`]{@link module:Collections.reject} but runs only a single async operation at a time.
@@ -4399,29 +4280,6 @@
   }
 
   /**
-   * The same as [`some`]{@link module:Collections.some} but runs a maximum of `limit` async operations at a time.
-   *
-   * @name someLimit
-   * @static
-   * @memberOf module:Collections
-   * @method
-   * @see [async.some]{@link module:Collections.some}
-   * @alias anyLimit
-   * @category Collection
-   * @param {Array|Iterable|Object} coll - A collection to iterate over.
-   * @param {number} limit - The maximum number of async operations at a time.
-   * @param {Function} iteratee - A truth test to apply to each item in the array
-   * in parallel. The iteratee is passed a `callback(err, truthValue)` which must
-   * be called with a boolean argument once it has completed. Invoked with
-   * (item, callback).
-   * @param {Function} [callback] - A callback which is called as soon as any
-   * iteratee returns `true`, or after all the iteratee functions have finished.
-   * Result will be either `true` or `false` depending on the values of the async
-   * tests. Invoked with (err, result).
-   */
-  var someLimit = _createTester(eachOfLimit, Boolean, identity);
-
-  /**
    * Returns `true` if at least one element in the `coll` satisfies an async test.
    * If any iteratee call returns `true`, the main `callback` is immediately
    * called.
@@ -4451,7 +4309,30 @@
    *     // if result is true then at least one of the files exists
    * });
    */
-  var some = doLimit(someLimit, Infinity);
+  var some = _createTester(eachOf, Boolean, identity);
+
+  /**
+   * The same as [`some`]{@link module:Collections.some} but runs a maximum of `limit` async operations at a time.
+   *
+   * @name someLimit
+   * @static
+   * @memberOf module:Collections
+   * @method
+   * @see [async.some]{@link module:Collections.some}
+   * @alias anyLimit
+   * @category Collection
+   * @param {Array|Iterable|Object} coll - A collection to iterate over.
+   * @param {number} limit - The maximum number of async operations at a time.
+   * @param {Function} iteratee - A truth test to apply to each item in the array
+   * in parallel. The iteratee is passed a `callback(err, truthValue)` which must
+   * be called with a boolean argument once it has completed. Invoked with
+   * (item, callback).
+   * @param {Function} [callback] - A callback which is called as soon as any
+   * iteratee returns `true`, or after all the iteratee functions have finished.
+   * Result will be either `true` or `false` depending on the values of the async
+   * tests. Invoked with (err, result).
+   */
+  var someLimit = _createTester(eachOfLimit, Boolean, identity);
 
   /**
    * The same as [`some`]{@link module:Collections.some} but runs only a single async operation at a time.
@@ -4597,7 +4478,7 @@
   var nativeMax$1 = Math.max;
   /**
    * The base implementation of `_.range` and `_.rangeRight` which doesn't
-   * coerce arguments to numbers.
+   * coerce arguments.
    *
    * @private
    * @param {number} start The start of the range.
@@ -4805,7 +4686,7 @@
   function whilst(test, iteratee, callback) {
       callback = onlyOnce(callback || noop);
       if (!test()) return callback(null);
-      var next = rest(function (err, args) {
+      var next = baseRest(function (err, args) {
           if (err) return callback(err);
           if (test()) return iteratee(next);
           callback.apply(null, [null].concat(args));
@@ -4910,7 +4791,7 @@
               return callback.apply(null, [null].concat(args));
           }
 
-          var taskCallback = onlyOnce(rest(function (err, args) {
+          var taskCallback = onlyOnce(baseRest(function (err, args) {
               if (err) {
                   return callback.apply(null, [err].concat(args));
               }
@@ -4946,8 +4827,8 @@
     doUntil: doUntil,
     doWhilst: doWhilst,
     during: during,
-    each: each,
-    eachLimit: eachLimit,
+    each: eachLimit,
+    eachLimit: eachLimit$1,
     eachOf: eachOf,
     eachOfLimit: eachOfLimit,
     eachOfSeries: eachOfSeries,
@@ -4969,8 +4850,8 @@
     mapValuesSeries: mapValuesSeries,
     memoize: memoize,
     nextTick: nextTick,
-    parallel: parallel,
-    parallelLimit: parallelLimit,
+    parallel: parallelLimit,
+    parallelLimit: parallelLimit$1,
     priorityQueue: priorityQueue,
     queue: queue$1,
     race: race,
@@ -5003,9 +4884,9 @@
     // aliases
     all: every,
     any: some,
-    forEach: each,
+    forEach: eachLimit,
     forEachSeries: eachSeries,
-    forEachLimit: eachLimit,
+    forEachLimit: eachLimit$1,
     forEachOf: eachOf,
     forEachOfSeries: eachOfSeries,
     forEachOfLimit: eachOfLimit,
@@ -5038,8 +4919,8 @@
   exports.doUntil = doUntil;
   exports.doWhilst = doWhilst;
   exports.during = during;
-  exports.each = each;
-  exports.eachLimit = eachLimit;
+  exports.each = eachLimit;
+  exports.eachLimit = eachLimit$1;
   exports.eachOf = eachOf;
   exports.eachOfLimit = eachOfLimit;
   exports.eachOfSeries = eachOfSeries;
@@ -5061,8 +4942,8 @@
   exports.mapValuesSeries = mapValuesSeries;
   exports.memoize = memoize;
   exports.nextTick = nextTick;
-  exports.parallel = parallel;
-  exports.parallelLimit = parallelLimit;
+  exports.parallel = parallelLimit;
+  exports.parallelLimit = parallelLimit$1;
   exports.priorityQueue = priorityQueue;
   exports.queue = queue$1;
   exports.race = race;
@@ -5100,9 +4981,9 @@
   exports.find = detect;
   exports.findLimit = detectLimit;
   exports.findSeries = detectSeries;
-  exports.forEach = each;
+  exports.forEach = eachLimit;
   exports.forEachSeries = eachSeries;
-  exports.forEachLimit = eachLimit;
+  exports.forEachLimit = eachLimit$1;
   exports.forEachOf = eachOf;
   exports.forEachOfSeries = eachOfSeries;
   exports.forEachOfLimit = eachOfLimit;
