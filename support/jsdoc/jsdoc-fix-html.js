@@ -5,12 +5,13 @@ var path = require('path');
 var $ = require('cheerio');
 var _ = require('lodash');
 
+var VERSION = require('../../package.json').version;
 var docsDir = path.join(__dirname, '../../docs');
 var pageTitle = 'Methods:';
 
 var docFilename = 'docs.html';
 var mainModuleFile = 'module-async.html';
-var mainSectionId = '#main';
+var mainScrollableSection = '#main-container';
 var sectionTitleClass = '.page-title';
 
 var HTMLFileBegin = '<!DOCTYPE html>\n<html lang="en">\n<head>\n';
@@ -21,6 +22,12 @@ var additionalFooterText = ' Documentation has been modified from the original. 
     ' For more information, please see the <a href="https://github.com/caolan/async">async</a> repository.';
 
 function generateHTMLFile(filename, $page, callback) {
+    var methodName = filename.match(/\/(\w+)\.js\.html$/);
+    if (methodName) {
+        var $thisMethodDocLink = $page.find('#toc').find('a[href="'+docFilename+'#'+methodName[1]+'"]');
+        $thisMethodDocLink.parent().addClass('active');
+    }
+
     // generate an HTML file from a cheerio object
     var HTMLdata = HTMLFileBegin + $page.find('head').html()
         + HTMLFileHeadBodyJoin + $page.find('body').html()
@@ -33,29 +40,6 @@ function extractModuleFiles(files) {
     return _.filter(files, function(file) {
         return _.startsWith(file, 'module') && file !== mainModuleFile;
     });
-}
-
-function getSearchableInfo($page, callback) {
-    var $sourceLinks = $page.find('a[href$=".js.html"]');
-    var sourceFiles = $sourceLinks.map(function() {
-        return $(this).attr('href');
-    }).toArray().sort();
-
-    var $methodLinks = $page.find('nav').find('a');
-    var methods = $methodLinks.map(function() {
-        var methodName = $(this).text();
-        return (methodName === 'Home' ? null : methodName);
-    }).toArray().sort();
-
-    fs.mkdirsSync(path.join(docsDir, 'data'));
-    async.parallel([
-        function(fileCallback) {
-            fs.writeJson(path.join(docsDir, 'data/sourceFiles.json'), sourceFiles, fileCallback);
-        },
-        function(fileCallback) {
-            fs.writeJson(path.join(docsDir, 'data/methodNames.json'), methods, fileCallback);
-        }
-    ], callback);
 }
 
 function combineFakeModules(files, callback) {
@@ -74,16 +58,12 @@ function combineFakeModules(files, callback) {
                 var $modulePage = $(moduleData);
                 var moduleName = $modulePage.find(sectionTitleClass).text();
                 $modulePage.find(sectionTitleClass).attr('id', moduleName.toLowerCase());
-                $mainPage.find(mainSectionId).append($modulePage.find(mainSectionId).html());
+                $mainPage.find(mainScrollableSection).append($modulePage.find(mainScrollableSection).html());
                 return fileCallback();
             });
         }, function(err) {
             if (err) return callback(err);
-
-            getSearchableInfo($mainPage, function(err) {
-                if (err) return callback(err);
-                generateHTMLFile(path.join(docsDir, docFilename), $mainPage, callback);
-            });
+            generateHTMLFile(path.join(docsDir, docFilename), $mainPage, callback);
         });
     });
 }
@@ -109,14 +89,44 @@ function applyPreCheerioFixes(data) {
 }
 
 
-function fixToc($page, moduleFiles) {
+function scrollSpyFix($page, $nav) {
+    // move everything into one big ul (for Bootstrap scroll-spy)
+    var $ul = $nav.children('ul');
+    $ul.addClass('nav').addClass('methods');
+    $ul.find('.methods').each(function() {
+        var $methodsList = $(this);
+        var $methods = $methodsList.find('[data-type="method"]');
+        var $parentLi = $methodsList.parent();
+
+        $methodsList.remove();
+        $methods.remove();
+        $parentLi.after($methods);
+        $parentLi.addClass('toc-header');
+
+    });
+
+    $page.find('[data-type="method"]').addClass("toc-method");
+
+    $page.find('[id^="."]').each(function() {
+        var $ele = $(this);
+        var id = $(this).attr('id');
+        $ele.attr('id', id.replace('.', ''));
+    });
+}
+
+function fixToc(file, $page, moduleFiles) {
     // remove `async` listing from toc
-    $page.find('li').find('a[href="'+mainModuleFile+'"]').parent().remove();
+    $page.find('a[href="'+mainModuleFile+'"]').parent().remove();
 
     // change toc title
-    $page.find('nav').children('h3').text(pageTitle);
-    $page.find('nav').children('h2').remove();
+    var $nav = $page.find('nav');
+    $nav.attr('id', 'toc');
+    $nav.children('h3').text(pageTitle);
+    $nav.children('h2').remove();
 
+    scrollSpyFix($page, $nav);
+
+    var prependFilename = (file === docFilename) ? '' : docFilename;
     // make everything point to the same 'docs.html' page
     _.each(moduleFiles, function(filename) {
         $page.find('[href^="'+filename+'"]').each(function() {
@@ -126,10 +136,10 @@ function fixToc($page, moduleFiles) {
             // category titles should sections title, while everything else
             // points to the correct listing
             if (href === filename) {
-                var moduleName = $ele.text().toLowerCase().replace(/\s/g, '');
-                $ele.attr('href', docFilename+'#'+moduleName);
+                var moduleName = $ele.text().toLowerCase().replace(/\s/g, '').replace('.', '');
+                $ele.attr('href', prependFilename+'#'+moduleName);
             } else {
-                $ele.attr('href', href.replace(filename, docFilename));
+                $ele.attr('href', href.replace(filename, prependFilename).replace('#.', '#'));
             }
         });
     });
@@ -139,7 +149,7 @@ function fixFooter($page) {
     // add a note to the footer that the documentation has been modified
     var $footer = $page.find('footer');
     $footer.append(additionalFooterText);
-    $page.find('#main').append($footer);
+    $page.find(mainScrollableSection).append($footer);
 }
 
 function fixModuleLinks(files, callback) {
@@ -152,7 +162,11 @@ function fixModuleLinks(files, callback) {
             if (err) return fileCallback(err);
             var $file = $(applyPreCheerioFixes(fileData));
 
-            fixToc($file, moduleFiles);
+            var $vDropdown = $file.find('#version-dropdown');
+            $vDropdown.find('.dropdown-toggle').contents().get(0).data = 'v'+VERSION+' ';
+            $vDropdown.find('a[href="'+docFilename+'"]').text('v'+VERSION);
+
+            fixToc(file, $file, moduleFiles);
             fixFooter($file);
             $file.find('[href="'+mainModuleFile+'"]').attr('href', docFilename);
             generateHTMLFile(filePath, $file, fileCallback);
